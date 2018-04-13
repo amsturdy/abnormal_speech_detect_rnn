@@ -7,9 +7,9 @@
 
 # 程序：
 所有程序都在src目录下面，项目目录结构为：
- -------rare_sound_event_detection_rnn
- | |---------data
- | |---------src
- | | |-----------synthesizer
- | | | |-----
+-------rare_sound_event_detection_rnn
+| |---------data
+| |---------src
+| | |-----------synthesizer
+| | | |-----
 
