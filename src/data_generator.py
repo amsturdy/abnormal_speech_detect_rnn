@@ -135,16 +135,19 @@ class MyGenerator(object):
         y = ys[0]
         pointer = 0
         iter = 0
+        index = np.random.permutation(y.shape[0])
         while True:
             if (self._type_) == 'test' and (iter == self._te_max_iter_):
                 break
             iter += 1
-            index = np.random.permutation(y.shape[0])
             if pointer >= y.shape[0]:
                 pointer = 0
                 index = np.random.permutation(y.shape[0])
-                
-            batch_ind = index[pointer : min(pointer+batch_size, y.shape[0])]
+            if pointer+batch_size > y.shape[0]:
+                batch_ind = index[-batch_size : ]
+            else:
+                batch_ind = index[pointer : pointer+batch_size]
+
             batch_x = x[batch_ind]
             batch_y = y[batch_ind]
             pointer += batch_size

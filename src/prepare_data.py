@@ -70,7 +70,42 @@ def create_folder(fd):
     if not os.path.exists(fd):
         os.makedirs(fd)
 
-### Feature extraction. 
+### Feature extraction.
+def extract_logmel(wav_path):
+    fs = cfg.sample_rate
+    n_window = cfg.n_window
+    n_overlap = cfg.n_overlap
+    # Mel filter bank
+    melW = librosa.filters.mel(sr=fs, 
+                               n_fft=n_window, 
+                               n_mels=64, 
+                               fmin=0., 
+                               fmax=8000.)
+
+    (audio, _) = read_audio(wav_path, fs)
+          
+    # Skip corrupted wavs
+    if audio.shape[0] == 0:
+        print("File %s is corrupted!" % wav_path)
+    else:
+        # Compute spectrogram
+        ham_win = np.hamming(n_window)
+        [f, t, x] = signal.spectral.spectrogram(
+                        x=audio, 
+                        window=ham_win,
+                        nperseg=n_window, 
+                        noverlap=n_overlap, 
+                        detrend=False, 
+                        return_onesided=True, 
+                        mode='magnitude') 
+        x = x.T
+        x = np.dot(x, melW.T)
+        x = np.log(x + 1e-8)
+        x = x.astype(np.float32)
+    return x
+
+
+ 
 def extract_features(wav_dir, out_dir, recompute):
     """Extract log mel spectrogram features. 
     
@@ -83,21 +118,12 @@ def extract_features(wav_dir, out_dir, recompute):
     Returns:
       None
     """
-    fs = cfg.sample_rate
-    n_window = cfg.n_window
-    n_overlap = cfg.n_overlap
     
     create_folder(out_dir)
     names = [na for na in os.listdir(wav_dir) if na.endswith(".wav")]
     names = sorted(names)
     print("Total file number: %d" % len(names))
 
-    # Mel filter bank
-    melW = librosa.filters.mel(sr=fs, 
-                               n_fft=n_window, 
-                               n_mels=64, 
-                               fmin=0., 
-                               fmax=8000.)
     
     cnt = 0
     t1 = time.time()
@@ -108,37 +134,17 @@ def extract_features(wav_dir, out_dir, recompute):
         # Skip features already computed
         if recompute or (not os.path.isfile(out_path)):
             print(cnt, out_path)
-            (audio, _) = read_audio(wav_path, fs)
-            
-            # Skip corrupted wavs
-            if audio.shape[0] == 0:
-                print("File %s is corrupted!" % wav_path)
-            else:
-                # Compute spectrogram
-                ham_win = np.hamming(n_window)
-                [f, t, x] = signal.spectral.spectrogram(
-                                x=audio, 
-                                window=ham_win,
-                                nperseg=n_window, 
-                                noverlap=n_overlap, 
-                                detrend=False, 
-                                return_onesided=True, 
-                                mode='magnitude') 
-                x = x.T
-                x = np.dot(x, melW.T)
-                x = np.log(x + 1e-8)
-                x = x.astype(np.float32)
-                
+            x = extract_logmel(wav_path)    
                 # Dump to pickle
-                cPickle.dump(x, open(out_path, 'wb'), 
-                             protocol=cPickle.HIGHEST_PROTOCOL)
+            cPickle.dump(x, open(out_path, 'wb'), 
+                     protocol=cPickle.HIGHEST_PROTOCOL)
         cnt += 1
     print("Extracting feature time: %s" % (time.time() - t1,))
 
 
 
 ### Pack features of hdf5 file
-def pack_features_to_hdf5(fe_dir, out_path, yaml_dir=None):
+def features_to_hdf5(fe_dir, out_path, yaml_dir=None):
     """Pack extracted features to a single hdf5 file. 
     
     This hdf5 file can speed up loading the features. This hdf5 file has 
@@ -178,12 +184,11 @@ def pack_features_to_hdf5(fe_dir, out_path, yaml_dir=None):
             if li['event_present']:
                 start_ = second_to_frame(li['event_start_in_mixture_seconds'], cfg.sample_rate, cfg.n_window, cfg.n_overlap)
                 end_ = second_to_frame(li['event_end_in_mixture_seconds'], cfg.sample_rate, cfg.n_window, cfg.n_overlap)
-                if(cfg.num_classes > 2):
+                if(cfg.num_classes > 1):
                     y[start_:end_,li['event_id']] = 1
-                else:
-                    y[start_:end_,cfg.num_classes-1] = 1
-                if cfg.num_classes > 1:
                     y[start_:end_,0] = 0
+                else:
+                    y[start_:end_,0] = 1
 
                     
             na_all.append(na) # Remove 'Y' in the begining. 
@@ -236,7 +241,7 @@ def pad_trunc_seq(x, max_len):
     return x_new
     
 ### Load data & scale data
-def load_hdf5_data(hdf5_path, verbose=1):
+def load_hdf5(hdf5_path, verbose=1):
     """Load hdf5 data. 
     
     Args:
@@ -275,7 +280,7 @@ def calculate_scaler(hdf5_path, out_path):
     """
     create_folder(os.path.dirname(out_path))
     t1 = time.time()
-    (x, y, na_list) = load_hdf5_data(hdf5_path, verbose=1)
+    (x, y, na_list) = load_hdf5(hdf5_path, verbose=1)
     (n_clips, n_time, n_freq) = x.shape
     x2d = x.reshape((n_clips * n_time, n_freq))
     scaler = preprocessing.StandardScaler().fit(x2d)
@@ -307,7 +312,7 @@ def do_scale(x3d, scaler_path, verbose=1):
 
 ### Main function
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="")
+    parser = argparse.ArgumentParser(description="prepare data")
     subparsers = parser.add_subparsers(dest='mode')
     
     parser_ef = subparsers.add_parser('extract_features')
@@ -315,7 +320,7 @@ if __name__ == '__main__':
     parser_ef.add_argument('--out_dir', type=str)
     parser_ef.add_argument('--recompute', type=bool)
     
-    parser_pf = subparsers.add_parser('pack_features')
+    parser_pf = subparsers.add_parser('features2h5')
     parser_pf.add_argument('--fe_dir', type=str)
     parser_pf.add_argument('--yaml_dir', type=str)
     parser_pf.add_argument('--out_path', type=str)
@@ -330,8 +335,8 @@ if __name__ == '__main__':
         extract_features(wav_dir=args.wav_dir, 
                          out_dir=args.out_dir, 
                          recompute=args.recompute)
-    elif args.mode == 'pack_features':
-        pack_features_to_hdf5(fe_dir=args.fe_dir, 
+    elif args.mode == 'features2h5':
+        features_to_hdf5(fe_dir=args.fe_dir, 
                               yaml_dir=args.yaml_dir, 
                               out_path=args.out_path)
     elif args.mode == 'calculate_scaler':

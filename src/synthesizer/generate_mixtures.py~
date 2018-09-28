@@ -197,7 +197,7 @@ def generate_mixture():
                 event_audio,fs_event =load_audio(event_path_full, target_fs=cfg.common_fs)
                 if not len(bg_audio) > len(event_audio):
                     print event_path_full
-                    raise AssertionError("length of bg_audio > that of event_audio!")
+                    raise RuntimeError("length of bg_audio > that of event_audio!")
                 offset_sample = int((len(bg_audio)-len(event_audio))*r.rand())
                 mixture_recipe['event_class'] = str(event_name)
                 mixture_recipe['event_id'] = int(event_id+1)

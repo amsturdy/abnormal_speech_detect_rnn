@@ -1,4 +1,6 @@
-import sed_eval,yaml,os,shutil
+import argparse, yaml, os, shutil
+import sed_eval
+import pdb
 
 def read_meta_yaml(filename):
     with open(filename, 'r') as infile:
@@ -13,13 +15,13 @@ def prepare_result_txt(yaml_dir, result_dir, s):
     os.makedirs(reference_dir)
     file_list = []
     for yaml_file in sorted(os.listdir(yaml_dir)):
-        if(yaml_file.endswith(yaml):
-            data=read_meta_yaml(yaml_file)
+        if yaml_file.endswith("yaml"):
+            data=read_meta_yaml(os.path.join(yaml_dir,yaml_file))
         else:
             continue
         for item in data:
             base_name=os.path.splitext(item['mixture_audio_filename'])[0]
-            class_name = base_name.split('_')[2]
+            class_name = base_name.split('_')[1]
 	    if item['event_present']:
                 reference_name=base_name+('_'+str(item['ebr'])+'_'+item['event_class'])
 	        f=open(os.path.join(reference_dir,reference_name+'_reference.txt'), 'wt')
@@ -32,15 +34,14 @@ def prepare_result_txt(yaml_dir, result_dir, s):
 	        reference_name=base_name
 	        f=open(os.path.join(reference_dir,reference_name+'_reference.txt'), 'wt')
 	        f.close()
-
-            if s==str(item['ebr']) or s==class_name or s=='all':
+            if (str(item['ebr']) in s) or (class_name in s) or s=='all':
 	        file_list.append({
 				'reference_file': os.path.join(reference_dir, reference_name+'_reference.txt'),
-				'estimated_file': os.path.join(estimate_dir, base_name+'_estimate.txt')
+				'estimated_file': os.path.join(estimate_dir, base_name+'.txt')
 				})
     return file_list
 
-def evalution(event_labels, file_list):
+def evaluate(event_labels, file_list):
     data = []
     # Get used event labels
     all_data = sed_eval.util.event_list.EventList()
@@ -83,10 +84,13 @@ def evalution(event_labels, file_list):
     return result
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument('--param', type=str)
+
+    args = parser.parse_args()
     event_labels=['babycry', 'glassbreak', 'gunshot']
-    yaml_dir=""
-    result_dir=""
-    s=event_labels[0]
-    file_list=prepare_result_txt(yaml_dir, result_dir, s)
-    result = evalution(event_labels, file_list)
+    yaml_dir="data/mixture_data/devtest"
+    result_dir="result"
+    file_list=prepare_result_txt(yaml_dir, result_dir, args.param)
+    result = evaluate(event_labels, file_list)
     print result[0]['error_rate']['error_rate']
